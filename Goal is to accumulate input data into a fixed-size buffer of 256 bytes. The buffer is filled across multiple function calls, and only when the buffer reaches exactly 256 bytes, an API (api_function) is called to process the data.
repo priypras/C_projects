@@ -1,0 +1,57 @@
+#include <stdio.h>
+#include <string.h>
+
+#define BUFFER_SIZE 256
+
+// Global buffer state
+char buffer[BUFFER_SIZE];  // 256-byte buffer
+size_t filled_size = 0;    // Tracks how much of the buffer is filled
+
+// Simulating the API that accepts a 256-byte buffer
+void api_function(char *buffer, size_t size) {
+    printf("API received buffer of size %zu: %s\n", size, buffer);
+}
+
+// Function to process the input buffer and only call API when 256 bytes are filled
+void pass_buffer_to_api(const char *input_buffer, size_t input_size) {
+    size_t bytes_needed = BUFFER_SIZE - filled_size;
+
+    // While there's still room in the buffer
+    if (input_size >= bytes_needed) {
+        // Copy enough to complete the 256-byte buffer
+        memcpy(buffer + filled_size, input_buffer, bytes_needed);
+        filled_size += bytes_needed;
+
+        // Call the API since the buffer is now full
+        api_function(buffer, BUFFER_SIZE);
+
+        // Reset buffer state for the next set of inputs
+        filled_size = 0;
+
+        // Recursively handle any remaining bytes in the input buffer
+        pass_buffer_to_api(input_buffer + bytes_needed, input_size - bytes_needed);
+    } else {
+        // If input buffer isn't enough to fill the 256-byte buffer, copy the available data
+        memcpy(buffer + filled_size, input_buffer, input_size);
+        filled_size += input_size;
+    }
+}
+
+int main() {
+    // Example of fragmented input data that will fill the buffer across multiple calls
+    char input1[] = "This is the first part of the data.";
+    char input2[] = " This is the second part that adds more data.";
+    char input3[] = "Final input that should trigger the buffer to be full.";
+
+    // Call the function with different chunks of input
+    printf("Passing input1 to API:\n");
+    pass_buffer_to_api(input1, strlen(input1));
+
+    printf("\nPassing input2 to API:\n");
+    pass_buffer_to_api(input2, strlen(input2));
+
+    printf("\nPassing input3 to API:\n");
+    pass_buffer_to_api(input3, strlen(input3));
+
+    return 0;
+}
