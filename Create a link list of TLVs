@@ -1,0 +1,126 @@
+/*
+ * TLV is a data structure consists of tag, length and value.
+ * It is often used to represent certain messages or attributes with flexible
+ * value sizes.
+ *
+ * Let's say there's a program reads a series of TLVs from a socket and process
+ * them. The TLV is defined as follow:
+ *   - The tag field has 1 byte and indicates a unique identifier.
+ *   - The length field has 2 bytes and indicates the length of the value field.
+ *   - The value field represents a value.
+ *   - A TLV with tag=0 is reserved as a message terminator.
+ *
+ *    +----+----+----+----+----+----+----+----+-----+-----+-----+-----+...
+ *    |Tag |Length   |Value                   |Tag  |Length     |Value
+ *    |23  |5        |'H'  'e'  'l'  'l'  'o' |70   |28         |
+ *    +----+----+----+----+----+----+----+----+-----+-----+-----+-----+...
+ *
+ * Implement read_tlvs() which reads TLVs from the given socket descriptor until
+ * a message terminator appears and returns a linked list of struct tlv_t.
+ *
+ * You can use read() system call to read data from a socket.
+ *
+ * ssize_t read(int fd, void *buf, size_t nbyte);
+ *
+ * read() attempts to read nbyte bytes of data from the object referenced by the
+ * descriptor fd into the buffer pointed to by buf. The number of bytes actually
+ * read is returned upon success. Otherwise -1 is returned to indicate an error.
+ */
+
+struct tlv_t {
+    /* ToDo: Define member variables */
+    uint8_t tag;
+    uint16_t length;
+    uint8_t *value;
+    struct tlv_t *next;
+};
+
+static struct tlv_t *read_one_tlv(int sock_fd, int *err)
+{
+    struct tlv_t *tlv = NULL;
+    *err = 0;
+
+    uint8_t tag;
+    int rbytes = read(sock_fd, &tag, sizeof(tag));
+    if (rbytes == -1) {
+        goto error;
+    }
+
+    if (!tag) {
+        return NULL;
+    }
+
+    tlv = malloc(sizeof(*tlv));
+    if (!tlv) {
+        goto error;
+    }
+
+    memset(tlv, 0, sizeof(*tlv));
+    rbytes = read(sock_fd, &tlv->length, sizeof(tlv->length));
+    if (rbytes == -1) {
+        goto error;
+    }
+
+    if (!tlv->length) {
+        return tlv;
+    }
+
+    tlv->length = ntohs(tlv->length);
+
+    tlv->value = malloc(tlv->length);
+    if (!tlv->value) {
+        goto error;
+    }
+
+    rbytes = read(sock_fd, tlv->value, tlv->length);
+    if (rbytes == -1) {
+        goto error;
+    }
+
+    return tlv;
+
+error:
+    if (tlv) {
+        free(tlv);
+    }
+    *err = 1;
+    return NULL;
+}
+
+static void append_tlv(struct tlv_t **head, struct tlv_t **tail, struct tlv_t *tlv)
+{
+    if (*head == NULL) {
+        *head = *tail = tlv;
+    } else {
+        (*tail)->next = tlv;
+    }
+}
+
+static void free_tlvs(struct tlv_t *head)
+{
+    struct tlv_t *next;
+    while (head) {
+        next = head->next;
+        free(head);
+        head = next;
+    }
+}
+
+struct tlv_t *read_tlvs(int sock_fd)
+{
+    struct tlv_t *head = NULL;
+    struct tlv_t *tail = NULL;
+    struct tlv_t *new_tlv = NULL;
+    int read_error = 0;
+
+    while ((new_tlv = read_one_tlv(sock_fd, &read_error)) != NULL) {
+        append_tlv(&head, &tail, new_tlv);
+    }
+
+    if (read_error) {
+        free_tlvs(head);
+        head = NULL;
+    }
+
+    return head;
+}
